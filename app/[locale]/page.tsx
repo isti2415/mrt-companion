@@ -44,7 +44,14 @@ const itemVariants = {
   },
 };
 
-export default function HomePage(params: { locale: "en" | "bn" }) {
+interface HomePageProps {
+  params: {
+    locale: "en" | "bn";
+  };
+  searchParams: { [key: string]: string | string[] | undefined };
+}
+
+export default function HomePage({ params }: HomePageProps) {
   const t = useTranslations();
   const { toast } = useToast();
   const [showClearDialog, setShowClearDialog] = useState(false);
