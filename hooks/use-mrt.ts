@@ -5,6 +5,18 @@ import { v4 as uuidv4 } from 'uuid';
 
 // Constants
 const BLOCK_SIZE = 16;
+const FELICA_SYSTEM_CODE = 0x0003; // FeliCa system code
+const FELICA_SERVICE_CODE = 0x220F; // Service code for MRT
+
+interface RawBlock {
+  fixedHeader: Uint8Array;
+  timestamp: Uint8Array;
+  transactionType: Uint8Array;
+  fromStationCode: number;
+  toStationCode: number;
+  balance: number;
+  trailing: Uint8Array;
+}
 
 interface RawBlock {
   fixedHeader: Uint8Array;
@@ -137,6 +149,48 @@ export function useMrt() {
     return transactions;
   }, [parseBlock, processBlock]);
 
+  const createPollingCommand = useCallback((): Uint8Array => {
+    return new Uint8Array([
+      0x00, // Length
+      0x00, // Command code for Polling
+      (FELICA_SYSTEM_CODE >> 8) & 0xFF,
+      FELICA_SYSTEM_CODE & 0xFF,
+      0x01, // Request code
+      0x0F  // Time slot
+    ]);
+  }, []);
+
+  const createReadCommand = useCallback((idm: Uint8Array, numberOfBlocks: number): Uint8Array => {
+    // Calculate total command length
+    const commandLength = 12 + (numberOfBlocks * 2); // 12 bytes header + 2 bytes per block
+    const command = new Uint8Array(commandLength);
+    
+    // Command code
+    command[0] = 0x06; // Read Without Encryption
+    
+    // Copy IDm (8 bytes)
+    command.set(idm, 1);
+    
+    // Number of services
+    command[9] = 0x01;
+    
+    // Service code
+    command[10] = FELICA_SERVICE_CODE & 0xFF;
+    command[11] = (FELICA_SERVICE_CODE >> 8) & 0xFF;
+    
+    // Number of blocks
+    command[12] = numberOfBlocks;
+    
+    // Block list
+    let offset = 13;
+    for (let i = 0; i < numberOfBlocks; i++) {
+      command[offset++] = 0x80; // 2-byte block list element
+      command[offset++] = i;    // Block number
+    }
+    
+    return command;
+  }, []);
+
   const readCard = useCallback(async () => {
     if (!isSupported) {
       setCardState({
@@ -193,26 +247,27 @@ export function useMrt() {
 
       const handleReading = async (event: NDEFReadingEvent) => {
         try {
-          const record = event.message.records[0];
-          if (!record) {
-            throw new Error('No data received from card');
-          }
+          console.log('Card detected:', event.serialNumber);
 
-          let payload: Uint8Array;
-          
-          // Handle different types of record data
-          if (record.data instanceof DataView) {
-            payload = new Uint8Array(record.data.buffer);
-          } else if (typeof record.data === 'string') {
-            // Convert string to Uint8Array if needed
-            payload = new TextEncoder().encode(record.data);
-          } else {
-            throw new Error('Unsupported data format from card');
-          }
+          // Send polling command
+          const pollingCommand = createPollingCommand();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const pollingResponse = await (event.message as any).sendFeliCaCommand(pollingCommand);
+          const pollingResponseArray = new Uint8Array(pollingResponse);
+          console.log('Polling response:', bytesToHex(pollingResponseArray));
 
-          console.log('Raw card data:', bytesToHex(payload));
+          // Extract IDm (8 bytes starting from index 1)
+          const idm = pollingResponseArray.slice(1, 9);
 
-          const parsedTransactions = parseResponse(payload);
+          // Read blocks
+          const numberOfBlocks = 10;
+          const readCommand = createReadCommand(idm, numberOfBlocks);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const readResponse = await (event.message as any).sendFeliCaCommand(readCommand);
+          const readResponseArray = new Uint8Array(readResponse);
+          console.log('Read response:', bytesToHex(readResponseArray));
+
+          const parsedTransactions = parseResponse(readResponseArray);
           if (parsedTransactions.length > 0) {
             setTransactions(parsedTransactions);
             const latestBalance = parsedTransactions[0].balance;
@@ -231,6 +286,8 @@ export function useMrt() {
             type: 'error',
             message: error instanceof Error ? error.message : 'Failed to read card data'
           });
+        } finally {
+          setIsReading(false);
         }
       };
 
@@ -261,7 +318,7 @@ export function useMrt() {
     } finally {
       setIsReading(false);
     }
-  }, [isSupported, isReading, parseResponse, bytesToHex]);
+  }, [isSupported, isReading, parseResponse, bytesToHex, createPollingCommand, createReadCommand]);
 
   const clearCache = useCallback(() => {
     localStorage.removeItem('dhaka-mrt-companion-data');
