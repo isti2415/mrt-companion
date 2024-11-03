@@ -3,20 +3,9 @@ import { CardState, Transaction, TransactionType } from '@/types';
 import { useCallback, useEffect, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 
-// Constants
+// Constants from Android implementation
 const BLOCK_SIZE = 16;
-const FELICA_SYSTEM_CODE = 0x0003; // FeliCa system code
-const FELICA_SERVICE_CODE = 0x220F; // Service code for MRT
-
-interface RawBlock {
-  fixedHeader: Uint8Array;
-  timestamp: Uint8Array;
-  transactionType: Uint8Array;
-  fromStationCode: number;
-  toStationCode: number;
-  balance: number;
-  trailing: Uint8Array;
-}
+const SERVICE_CODE = 0x220F; // Service code used in Android
 
 interface RawBlock {
   fixedHeader: Uint8Array;
@@ -34,12 +23,10 @@ export function useMrt() {
   const [isSupported, setIsSupported] = useState(false);
   const [isReading, setIsReading] = useState(false);
 
-  // Check NFC support
   useEffect(() => {
     setIsSupported(typeof NDEFReader !== 'undefined');
   }, []);
 
-  // Helper functions remain the same until readCard
   const getStation = useCallback((code: number): { en: string; bn: string } => {
     const station = MRT_STATIONS.find(s => s.code === code);
     if (station) {
@@ -55,11 +42,12 @@ export function useMrt() {
   }, []);
 
   const bytesToHex = useCallback((bytes: Uint8Array): string => {
-    return Array.from(bytes)
-      .map(b => b.toString(16).padStart(2, '0').toUpperCase())
-      .join(' ');
+    return Array.from(bytes, byte => 
+      byte.toString(16).padStart(2, '0').toUpperCase()
+    ).join(' ');
   }, []);
 
+  // Following Android's timestamp decoding
   const decodeTimestamp = useCallback((bytes: Uint8Array): string => {
     const value = (bytes[1] << 8) | bytes[0];
     const baseTime = new Date('2024-01-01').getTime();
@@ -68,10 +56,45 @@ export function useMrt() {
   }, []);
 
   const determineTransactionType = useCallback((fixedHeader: string): TransactionType => {
+    // Using Android's logic for transaction type detection
     return fixedHeader.startsWith('08 52 10 00') ? 'FARE' : 'RECHARGE';
   }, []);
 
-  const parseBlock = useCallback((block: Uint8Array): RawBlock | null => {
+  // Create FeliCa command following Android implementation
+  const createFelicaCommand = useCallback((idm: Uint8Array): Uint8Array => {
+    const numberOfBlocksToRead = 10;
+    const serviceCodeList = [
+      (SERVICE_CODE & 0xFF),
+      ((SERVICE_CODE >> 8) & 0xFF)
+    ];
+
+    // Build block list elements as in Android
+    const blockListElements = new Uint8Array(numberOfBlocksToRead * 2);
+    for (let i = 0; i < numberOfBlocksToRead; i++) {
+      blockListElements[i * 2] = 0x80; // Two-byte block descriptor
+      blockListElements[i * 2 + 1] = i; // Block number
+    }
+
+    // Calculate command length
+    const commandLength = 14 + blockListElements.length;
+    const command = new Uint8Array(commandLength);
+
+    // Build command following Android structure
+    let offset = 0;
+    command[offset++] = commandLength; // Length
+    command[offset++] = 0x06; // Command code
+    command.set(idm, offset); // IDm
+    offset += 8;
+    command[offset++] = 0x01; // Number of services
+    command[offset++] = serviceCodeList[0];
+    command[offset++] = serviceCodeList[1];
+    command[offset++] = numberOfBlocksToRead; // Number of blocks
+    command.set(blockListElements, offset);
+
+    return command;
+  }, []);
+
+  const parseBlock = useCallback((block: Uint8Array): RawBlock => {
     if (block.length !== BLOCK_SIZE) {
       throw new Error('Invalid block size');
     }
@@ -82,6 +105,7 @@ export function useMrt() {
       transactionType: block.slice(6, 8),
       fromStationCode: block[8],
       toStationCode: block[10],
+      // Follow Android's little-endian balance parsing
       balance: (block[13] << 16) | (block[12] << 8) | block[11],
       trailing: block.slice(14, 16)
     };
@@ -113,10 +137,12 @@ export function useMrt() {
   const parseResponse = useCallback((response: Uint8Array): Transaction[] => {
     const transactions: Transaction[] = [];
 
+    // Follow Android's response parsing
     if (response.length < 13) {
       throw new Error('Response too short');
     }
 
+    // Check status flags as in Android
     if (response[10] !== 0x00 || response[11] !== 0x00) {
       throw new Error('Card read error');
     }
@@ -136,11 +162,9 @@ export function useMrt() {
 
       try {
         const rawBlock = parseBlock(blockBytes);
-        if (rawBlock) {
-          const transaction = processBlock(rawBlock, previousBalance);
-          transactions.push(transaction);
-          previousBalance = rawBlock.balance;
-        }
+        const transaction = processBlock(rawBlock, previousBalance);
+        transactions.push(transaction);
+        previousBalance = rawBlock.balance;
       } catch (error) {
         console.error('Error parsing block:', error);
       }
@@ -148,48 +172,6 @@ export function useMrt() {
 
     return transactions;
   }, [parseBlock, processBlock]);
-
-  const createPollingCommand = useCallback((): Uint8Array => {
-    return new Uint8Array([
-      0x00, // Length
-      0x00, // Command code for Polling
-      (FELICA_SYSTEM_CODE >> 8) & 0xFF,
-      FELICA_SYSTEM_CODE & 0xFF,
-      0x01, // Request code
-      0x0F  // Time slot
-    ]);
-  }, []);
-
-  const createReadCommand = useCallback((idm: Uint8Array, numberOfBlocks: number): Uint8Array => {
-    // Calculate total command length
-    const commandLength = 12 + (numberOfBlocks * 2); // 12 bytes header + 2 bytes per block
-    const command = new Uint8Array(commandLength);
-    
-    // Command code
-    command[0] = 0x06; // Read Without Encryption
-    
-    // Copy IDm (8 bytes)
-    command.set(idm, 1);
-    
-    // Number of services
-    command[9] = 0x01;
-    
-    // Service code
-    command[10] = FELICA_SERVICE_CODE & 0xFF;
-    command[11] = (FELICA_SERVICE_CODE >> 8) & 0xFF;
-    
-    // Number of blocks
-    command[12] = numberOfBlocks;
-    
-    // Block list
-    let offset = 13;
-    for (let i = 0; i < numberOfBlocks; i++) {
-      command[offset++] = 0x80; // 2-byte block list element
-      command[offset++] = i;    // Block number
-    }
-    
-    return command;
-  }, []);
 
   const readCard = useCallback(async () => {
     if (!isSupported) {
@@ -245,29 +227,26 @@ export function useMrt() {
         }
       }
 
-      const handleReading = async (event: NDEFReadingEvent) => {
+      // Handle card reading
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const handleReading = async (event: any) => {
         try {
-          console.log('Card detected:', event.serialNumber);
+          // Following Android's implementation for FeliCa communication
+          if (!event.message?.felica) {
+            throw new Error('Not a FeliCa card');
+          }
 
-          // Send polling command
-          const pollingCommand = createPollingCommand();
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const pollingResponse = await (event.message as any).sendFeliCaCommand(pollingCommand);
-          const pollingResponseArray = new Uint8Array(pollingResponse);
-          console.log('Polling response:', bytesToHex(pollingResponseArray));
+          const idm = event.message.felica.idm;
+          console.log('Card IDm:', bytesToHex(idm));
 
-          // Extract IDm (8 bytes starting from index 1)
-          const idm = pollingResponseArray.slice(1, 9);
+          // Create and send command following Android structure
+          const command = createFelicaCommand(idm);
+          console.log('Sending command:', bytesToHex(command));
 
-          // Read blocks
-          const numberOfBlocks = 10;
-          const readCommand = createReadCommand(idm, numberOfBlocks);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const readResponse = await (event.message as any).sendFeliCaCommand(readCommand);
-          const readResponseArray = new Uint8Array(readResponse);
-          console.log('Read response:', bytesToHex(readResponseArray));
+          const response = await event.message.felica.sendCommand(command);
+          console.log('Received response:', bytesToHex(new Uint8Array(response)));
 
-          const parsedTransactions = parseResponse(readResponseArray);
+          const parsedTransactions = parseResponse(new Uint8Array(response));
           if (parsedTransactions.length > 0) {
             setTransactions(parsedTransactions);
             const latestBalance = parsedTransactions[0].balance;
@@ -291,21 +270,10 @@ export function useMrt() {
         }
       };
 
-      const handleReadError = (error: Error) => {
-        console.error('NFC reading error:', error);
-        setCardState({
-          type: 'error',
-          message: 'Error reading card. Please try again'
-        });
-        setIsReading(false);
-      };
-
       ndef.addEventListener("reading", handleReading);
-      ndef.addEventListener("readingerror", handleReadError);
 
       return () => {
         ndef.removeEventListener("reading", handleReading);
-        ndef.removeEventListener("readingerror", handleReadError);
         setIsReading(false);
       };
 
@@ -318,19 +286,17 @@ export function useMrt() {
     } finally {
       setIsReading(false);
     }
-  }, [isSupported, isReading, parseResponse, bytesToHex, createPollingCommand, createReadCommand]);
-
-  const clearCache = useCallback(() => {
-    localStorage.removeItem('dhaka-mrt-companion-data');
-    setTransactions([]);
-    setCardState({ type: 'waitingForTap' });
-  }, []);
+  }, [isSupported, isReading, createFelicaCommand, parseResponse, bytesToHex]);
 
   return {
     cardState,
     transactions,
     readCard,
-    clearCache,
+    clearCache: useCallback(() => {
+      localStorage.removeItem('dhaka-mrt-companion-data');
+      setTransactions([]);
+      setCardState({ type: 'waitingForTap' });
+    }, []),
     isSupported,
     isReading
   };
