@@ -1,0 +1,58 @@
+{
+  "app": {
+    "title": "Dhaka MRT Companion",
+    "description": "Check your MRT card balance and journey history",
+    "nfcError": "NFC Not Supported",
+    "nfcErrorDesc": "Please use Chrome browser on Android to access NFC features"
+  },
+  "card": {
+    "title": "MRT Card Reader",
+    "description": "Tap your card to check balance",
+    "currentBalance": "Current Balance",
+    "lastRead": "Last Read",
+    "readyToScan": "Ready to scan",
+    "reading": "Reading card...",
+    "tapToRead": "Tap to Read Card",
+    "error": "Error",
+    "waitingForTap": "Tap your card on the back of your phone"
+  },
+  "transactions": {
+    "title": "Transaction History",
+    "description": "Your recent travel history",
+    "noTransactions": "No transactions found",
+    "balance": "Balance",
+    "journey": "Journey",
+    "recharge": "Recharge"
+  },
+  "stats": {
+    "totalSpent": "Total Spent",
+    "totalRecharge": "Total Recharge",
+    "journeys": "Total Journeys"
+  },
+  "actions": {
+    "clearHistory": "Clear History",
+    "cancel": "Cancel",
+    "clear": "Clear",
+    "tryAgain": "Try Again"
+  },
+  "dialogs": {
+    "clearHistory": {
+      "title": "Clear History",
+      "description": "This will permanently delete all your transaction history. This action cannot be undone."
+    }
+  },
+  "notifications": {
+    "historyCleared": "History Cleared",
+    "historyClearedDesc": "Your transaction history has been cleared successfully."
+  },
+  "footer": {
+    "createdBy": "Created by",
+    "inspiredBy": "Inspired by",
+    "originalWork": "original work of"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  }
+}
