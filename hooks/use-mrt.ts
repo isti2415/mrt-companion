@@ -61,6 +61,7 @@ export function useMrt() {
   }, []);
 
   // Create FeliCa command following Android implementation
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const createFelicaCommand = useCallback((idm: Uint8Array): Uint8Array => {
     const numberOfBlocksToRead = 10;
     const serviceCodeList = [
@@ -190,9 +191,21 @@ export function useMrt() {
       setIsReading(true);
       setCardState({ type: 'reading' });
 
+      // Request NFC permissions with specific technologies
+      if ('NDEFReader' in window) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const nfc = (window as any).navigator.nfc;
+          await nfc.requestPermission({ name: "NFC", type: "nfc-f" });
+        } catch (error) {
+          console.error('NFC permission error:', error);
+        }
+      }
+
       const ndef = new NDEFReader();
       
       try {
+        // Configure scan options specifically for NFC-F (FeliCa)
         await ndef.scan();
         console.log('Scanning for MRT card...');
       } catch (error) {
@@ -227,26 +240,67 @@ export function useMrt() {
         }
       }
 
-      // Handle card reading
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const handleReading = async (event: any) => {
         try {
-          // Following Android's implementation for FeliCa communication
-          if (!event.message?.felica) {
-            throw new Error('Not a FeliCa card');
+          console.log('Card detected:', event);
+
+          // Try to get raw tag information
+          const tag = event.tag || event.message;
+          if (!tag) {
+            throw new Error('No tag information available');
           }
 
-          const idm = event.message.felica.idm;
-          console.log('Card IDm:', bytesToHex(idm));
+          // Get tag technology type
+          const tech = tag.technology || 'unknown';
+          console.log('Tag technology:', tech);
 
-          // Create and send command following Android structure
-          const command = createFelicaCommand(idm);
+          // Create command for reading the card
+          const numberOfBlocks = 10;
+          const command = new Uint8Array(numberOfBlocks * 2 + 14);
+          
+          // Command structure following Android implementation
+          command[0] = command.length;  // Length
+          command[1] = 0x06;           // Command code
+          
+          // Fill IDm (if available)
+          if (tag.id) {
+            command.set(new Uint8Array(tag.id), 2);
+          }
+          
+          // Service code and number of blocks
+          command[10] = 0x01;          // Number of services
+          command[11] = SERVICE_CODE & 0xFF;
+          command[12] = (SERVICE_CODE >> 8) & 0xFF;
+          command[13] = numberOfBlocks;  // Number of blocks to read
+
+          // Block list
+          for (let i = 0; i < numberOfBlocks; i++) {
+            const offset = 14 + (i * 2);
+            command[offset] = 0x80;    // Block list element flag
+            command[offset + 1] = i;    // Block number
+          }
+
           console.log('Sending command:', bytesToHex(command));
 
-          const response = await event.message.felica.sendCommand(command);
-          console.log('Received response:', bytesToHex(new Uint8Array(response)));
+          // Try different methods to communicate with the card
+          let response;
+          if (tag.transceive) {
+            response = await tag.transceive(command);
+          } else if (tag.sendCommand) {
+            response = await tag.sendCommand(command);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } else if ((tag as any).felica?.sendCommand) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            response = await (tag as any).felica.sendCommand(command);
+          } else {
+            throw new Error('Card communication not supported');
+          }
 
-          const parsedTransactions = parseResponse(new Uint8Array(response));
+          const responseArray = new Uint8Array(response);
+          console.log('Received response:', bytesToHex(responseArray));
+
+          const parsedTransactions = parseResponse(responseArray);
           if (parsedTransactions.length > 0) {
             setTransactions(parsedTransactions);
             const latestBalance = parsedTransactions[0].balance;
@@ -286,7 +340,7 @@ export function useMrt() {
     } finally {
       setIsReading(false);
     }
-  }, [isSupported, isReading, createFelicaCommand, parseResponse, bytesToHex]);
+  }, [isSupported, isReading, parseResponse, bytesToHex]);
 
   return {
     cardState,
