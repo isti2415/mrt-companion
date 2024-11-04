@@ -50,3 +50,41 @@ export const checkNFCSupport = async (): Promise<{
         };
     }
 };
+
+export const requestNFCPermission = async (): Promise<{ 
+    granted: boolean; 
+    error?: string 
+}> => {
+    if (!('NDEFReader' in window)) {
+        return {
+            granted: false,
+            error: 'NFC not supported in this browser'
+        };
+    }
+
+    try {
+        const nfcNavigator = navigator as NFCNavigator;
+        
+        if (!nfcNavigator.nfc) {
+            // Fallback to NDEFReader if specific NFC API is not available
+            const ndef = new NDEFReader();
+            await ndef.scan();
+            return { granted: true };
+        }
+
+        const permission = await nfcNavigator.nfc.requestPermission({
+            name: 'NFC',
+            type: 'nfc-f' // Specifically request FeliCa
+        });
+
+        return {
+            granted: permission.state === 'granted',
+            error: permission.state === 'denied' ? 'NFC permission denied' : undefined
+        };
+    } catch (error) {
+        return {
+            granted: false,
+            error: error instanceof Error ? error.message : 'Failed to request NFC permission'
+        };
+    }
+};

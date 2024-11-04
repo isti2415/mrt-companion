@@ -1,8 +1,8 @@
 
-import { NFCReaderConfig, NFCReadResult } from '../types/reader';
-import { NFC_CONSTANTS } from '../constants/nfc';
-import { NFCLogger } from './TransactionParser';
 import { CommandBuilder } from '@/utils/command-builder';
+import { NFC_CONSTANTS } from '../constants/nfc';
+import { NFCReaderConfig, NFCReadResult } from '../types/reader';
+import { NFCLogger } from './TransactionParser';
 
 export class NFCReader {
     private ndef: NDEFReader | null = null;

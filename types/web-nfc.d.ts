@@ -50,6 +50,17 @@ declare class NDEFReader extends EventTarget {
     ): void;
 }
 
+interface NFCPermissionDescriptor {
+    name: 'NFC';
+    type?: 'nfc-a' | 'nfc-b' | 'nfc-f' | 'nfc-v';
+}
+
+interface NFCNavigator extends Navigator {
+    nfc?: {
+        requestPermission(descriptor: NFCPermissionDescriptor): Promise<PermissionStatus>;
+    };
+}
+
 // Declare global Web NFC availability
 interface Window {
     NDEFReader: typeof NDEFReader;
