@@ -1,35 +1,73 @@
 import { useState, useEffect } from 'react';
-import { checkNFCSupport, checkNFCPermission } from '../utils/nfc-check';
+import { checkNFCSupport } from '../utils/nfc-check';
 
 export function useNfcAvailability() {
     const [isAvailable, setIsAvailable] = useState<boolean>(false);
-    const [permission, setPermission] = useState<PermissionState>('prompt');
     const [error, setError] = useState<string | null>(null);
+    const [permission, setPermission] = useState<PermissionState>('prompt');
 
     useEffect(() => {
+        let mounted = true;
+
         const checkAvailability = async () => {
             try {
-                // Check if NFC is supported
-                const supported = checkNFCSupport();
-                if (!supported) {
-                    setError('NFC is not supported on this device');
+                const { isSupported, error: supportError } = await checkNFCSupport();
+                
+                if (!mounted) return;
+
+                if (!isSupported) {
                     setIsAvailable(false);
+                    setError(supportError || 'NFC not available');
                     return;
                 }
 
-                // Check permission
-                const permissionState = await checkNFCPermission();
-                setPermission(permissionState);
-                setIsAvailable(permissionState === 'granted');
+                // If supported, try to get permission
+                const permissionResult = await navigator.permissions.query({ 
+                    name: 'nfc' as PermissionName 
+                });
+                
+                if (!mounted) return;
+
+                setPermission(permissionResult.state);
+                setIsAvailable(true);
+                setError(null);
+
+                // Listen for permission changes
+                permissionResult.addEventListener('change', () => {
+                    if (!mounted) return;
+                    setPermission(permissionResult.state);
+                    setIsAvailable(permissionResult.state === 'granted');
+                });
 
             } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to check NFC availability');
+                if (!mounted) return;
                 setIsAvailable(false);
+                setError(err instanceof Error ? err.message : 'Failed to check NFC availability');
             }
         };
 
         checkAvailability();
+
+        return () => {
+            mounted = false;
+        };
     }, []);
 
-    return { isAvailable, permission, error };
+    const requestPermission = async () => {
+        try {
+            const ndef = new NDEFReader();
+            await ndef.scan();
+            setIsAvailable(true);
+            setError(null);
+        } catch (error) {
+            setError(error instanceof Error ? error.message : 'Failed to get NFC permission');
+        }
+    };
+
+    return {
+        isAvailable,
+        error,
+        permission,
+        requestPermission
+    };
 }

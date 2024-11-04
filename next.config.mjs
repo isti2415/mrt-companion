@@ -11,7 +11,7 @@ const nextConfig = {
         headers: [
           {
             key: 'Permissions-Policy',
-            value: 'nfc=*'
+            value: 'nfc=self'
           }
         ]
       }

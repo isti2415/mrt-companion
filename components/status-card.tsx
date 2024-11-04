@@ -11,6 +11,8 @@ import {
 interface StatusCardProps {
     state: CardState;
     onStartReading?: () => void;
+    onRequestPermission?: () => void;
+    permission?: PermissionState;
 }
 
 const StatusIcon = ({ state }: { state: CardState }) => {
@@ -78,7 +80,12 @@ const StatusMessage = ({ state }: { state: CardState }) => {
     }
 };
 
-export const StatusCard = ({ state, onStartReading }: StatusCardProps) => (
+export const StatusCard = ({ 
+    state, 
+    onStartReading, 
+    onRequestPermission,
+    permission 
+}: StatusCardProps) => (
     <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -87,6 +94,18 @@ export const StatusCard = ({ state, onStartReading }: StatusCardProps) => (
         <div className="flex flex-col items-center space-y-4">
             <StatusIcon state={state} />
             <StatusMessage state={state} />
+            
+            {state.type === 'NoNfcSupport' && permission === 'prompt' && onRequestPermission && (
+                <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={onRequestPermission}
+                    className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-lg font-medium
+                             hover:bg-blue-600 transition-colors"
+                >
+                    Enable NFC
+                </motion.button>
+            )}
+            
             {state.type === 'WaitingForTap' && onStartReading && (
                 <motion.button
                     whileTap={{ scale: 0.95 }}
