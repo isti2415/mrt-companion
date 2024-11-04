@@ -1,52 +1,42 @@
-import { motion } from "framer-motion";
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardHeader, 
-  CardTitle 
-} from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Transaction } from "@/types";
-import { TransactionItem } from "./transaction-item";
-import { useTranslations } from "next-intl";
+import { Transaction } from '@/types';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface TransactionListProps {
-  transactions: Transaction[];
-  locale: "en"|"bn";
+    transactions: Transaction[];
 }
 
-export function TransactionList({ transactions, locale }: TransactionListProps) {
-  const t = useTranslations();
+export const TransactionList = ({ transactions }: TransactionListProps) => {
+    if (!transactions.length) return null;
 
-  if (!transactions.length) return null;
-
-  return (
-    <motion.div
-      initial={{ y: 20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ delay: 0.3 }}
-    >
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('transactions.title')}</CardTitle>
-          <CardDescription>
-            {t('transactions.description')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-[400px] pr-4">
-            {transactions.map((transaction, index) => (
-              <TransactionItem
-                key={transaction.id}
-                transaction={transaction}
-                index={index}
-                locale={locale}
-              />
-            ))}
-          </ScrollArea>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
+    return (
+        <div className="mt-6 space-y-4">
+            <h2 className="text-xl font-semibold text-gray-800">Recent Transactions</h2>
+            <AnimatePresence mode="popLayout">
+                {transactions.map((transaction, index) => (
+                    <motion.div
+                        key={`${transaction.timestamp}-${index}`}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="bg-white rounded-lg shadow-md p-4"
+                    >
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-sm text-gray-500">{transaction.timestamp}</p>
+                                <div className="mt-1">
+                                    <p className="font-medium">{transaction.fromStation}</p>
+                                    {transaction.toStation !== "Unknown Station (0)" && (
+                                        <p className="text-gray-600">To: {transaction.toStation}</p>
+                                    )}
+                                </div>
+                            </div>
+                            <p className="text-lg font-semibold">
+                                ৳{transaction.balance.toLocaleString()}
+                            </p>
+                        </div>
+                    </motion.div>
+                ))}
+            </AnimatePresence>
+        </div>
+    );
+};

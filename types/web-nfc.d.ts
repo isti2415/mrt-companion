@@ -1,43 +1,56 @@
-interface NDEFRecord {
+interface NFCRecord {
     recordType: string;
     mediaType?: string;
     id?: string;
-    data?: DataView | string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data?: any;
     encoding?: string;
     lang?: string;
-  }
-  
-  interface NDEFMessage {
-    records: NDEFRecord[];
-  }
-  
-  interface NDEFReadingEvent {
+}
+
+interface NFCMessage {
+    records: NFCRecord[];
+}
+
+interface NFCReadingEvent extends Event {
     serialNumber: string;
-    message: NDEFMessage;
-  }
-  
-  interface NDEFReader extends EventTarget {
-    scan: () => Promise<void>;
-    write: (message: NDEFMessage) => Promise<void>;
+    message: NFCMessage;
+}
+
+interface NFCErrorEvent extends Event {
+    error: Error;
+}
+
+interface NFCReaderOptions {
+    signal?: AbortSignal;
+}
+
+declare class NDEFReader extends EventTarget {
+    constructor();
+    
+    scan(options?: NFCReaderOptions): Promise<void>;
+    write(message: NFCMessage, options?: NFCReaderOptions): Promise<void>;
+
     addEventListener(
-      type: 'reading',
-      callback: (event: NDEFReadingEvent) => void
+        type: 'reading',
+        callback: (event: NFCReadingEvent) => void,
+        options?: boolean | AddEventListenerOptions
     ): void;
+    
     addEventListener(
-      type: 'readingerror',
-      callback: (error: Error) => void
+        type: 'readingerror',
+        callback: (event: NFCErrorEvent) => void,
+        options?: boolean | AddEventListenerOptions
     ): void;
+
     removeEventListener(
-      type: 'reading',
-      callback: (event: NDEFReadingEvent) => void
+        type: string,
+        callback: (event: Event) => void,
+        options?: boolean | EventListenerOptions
     ): void;
-    removeEventListener(
-      type: 'readingerror',
-      callback: (error: Error) => void
-    ): void;
-  }
-  
-  declare const NDEFReader: {
-    prototype: NDEFReader;
-    new(): NDEFReader;
-  };
+}
+
+// Declare global Web NFC availability
+interface Window {
+    NDEFReader: typeof NDEFReader;
+}

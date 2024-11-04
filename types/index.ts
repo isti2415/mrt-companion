@@ -1,34 +1,40 @@
+export type StationType = 
+    | 'Motijheel'
+    | 'Bangladesh Secretariat'
+    | 'Dhaka University'
+    | 'Shahbagh'
+    | 'Karwan Bazar'
+    | 'Farmgate'
+    | 'Bijoy Sarani'
+    | 'Agargaon'
+    | 'Shewrapara'
+    | 'Kazipara'
+    | 'Mirpur 10'
+    | 'Mirpur 11'
+    | 'Pallabi'
+    | 'Uttara South'
+    | 'Uttara Center'
+    | 'Uttara North';
+
 export interface Transaction {
-    id: string;
     fixedHeader: string;
     timestamp: string;
-    transactionType: TransactionType;
-    fromStation: {
-        en: string;
-        bn: string;
-    };
-    toStation: {
-        en: string;
-        bn: string;
-    };
-    amount: number;
+    transactionType: string;
+    fromStation: StationType | string;
+    toStation: StationType | string;
     balance: number;
     trailing: string;
 }
 
-export type TransactionType =
-    | 'FARE'
-    | 'RECHARGE';
-
-export interface CachedData {
-    lastReadTime: string;
-    transactions: Transaction[];
-    lastBalance: number;
-    cardNumber?: string;
+export interface TransactionWithAmount {
+    transaction: Transaction;
+    amount: number | null;
 }
 
-export type CardState =
-    | { type: 'balance'; amount: number; lastRead: string; cardNumber?: string }
-    | { type: 'waitingForTap' }
-    | { type: 'reading' }
-    | { type: 'error'; message: string };
+export type CardState = 
+    | { type: 'WaitingForTap' }
+    | { type: 'Reading' }
+    | { type: 'Balance'; amount: number }
+    | { type: 'Error'; message: string }
+    | { type: 'NoNfcSupport' }
+    | { type: 'NfcDisabled' };
